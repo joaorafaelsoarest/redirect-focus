@@ -55,7 +55,7 @@ function makeDocument() {
 }
 
 let scenario = 0;
-async function mountOptionsPage() {
+async function mountOptionsPage({ pause = { paused: false, pauseUntil: null } } = {}) {
   const document = makeDocument();
   const messages = [];
   const permissionRequests = [];
@@ -64,10 +64,12 @@ async function mountOptionsPage() {
   const initialState = {
     blockedDomains: ['instagram.com'],
     productiveUrls: ['https://trello.com'],
+    pause,
   };
   globalThis.document = document;
   globalThis.chrome = {
     permissions: {
+      async contains() { return false; },
       async request(permission) { permissionRequests.push(permission); return permissionGranted; },
     },
     runtime: {
@@ -163,4 +165,20 @@ test('revela sites frequentes em grupos de cinco e oculta a ação ao chegar ao 
   await showMoreButton.click();
   assert.equal(topSitesList.children.length, 12);
   assert.equal(showMoreButton.hidden, true);
+});
+
+test('mostra contagem da pausa e permite retomar a proteção', async () => {
+  const page = await mountOptionsPage({ pause: { paused: true, pauseUntil: Date.now() + 60_000 } });
+  assert.match(page.document.querySelector('#pause-countdown').textContent, /1 minuto restante/);
+  assert.equal(page.document.querySelector('#resume').hidden, false);
+  await page.document.querySelector('#resume').click();
+  assert.equal(page.messages.some(({ type }) => type === 'resume'), true);
+});
+
+test('pede notificações ao pausar e continua quando a permissão é negada', async () => {
+  const page = await mountOptionsPage();
+  await page.document.querySelector('#pause').click();
+  assert.deepEqual(page.permissionRequests, [{ permissions: ['notifications'] }]);
+  assert.equal(page.messages.some(({ type }) => type === 'pause'), true);
+  assert.match(page.document.querySelector('#settings-status').textContent, /Permissão de notificações não concedida/);
 });
