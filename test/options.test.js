@@ -31,20 +31,27 @@ class FakeElement {
   setAttribute(name, value) { this.attributes[name] = value; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this._textContent = undefined; this.children = [...nodes]; }
+  focus() { this.ownerDocument.activeElement = this; }
   click() { return this.listeners.get('click')?.({ preventDefault() {} }); }
 }
 
 function makeDocument() {
   const elements = new Map();
-  return {
+  const document = {
+    activeElement: null,
     querySelector(selector) {
-      if (!elements.has(selector)) elements.set(selector, new FakeElement());
+      if (!elements.has(selector)) {
+        const element = new FakeElement();
+        element.ownerDocument = document;
+        elements.set(selector, element);
+      }
       return elements.get(selector);
     },
     querySelectorAll() { return []; },
-    createElement() { return new FakeElement(); },
+    createElement() { const element = new FakeElement(); element.ownerDocument = document; return element; },
     createTextNode(text) { return { textContent: String(text) }; },
   };
+  return document;
 }
 
 let scenario = 0;
@@ -115,6 +122,9 @@ test('consulta sites só após clique, trata recusa/vazio/erro e classifica sem 
   const redditFeedback = topSitesList.children[0].children[1];
   assert.equal(redditFeedback.textContent, 'Adicionado às distrações');
   assert.equal(redditFeedback.attributes.role, 'status');
+  assert.equal(page.document.activeElement, redditFeedback);
+  await page.document.querySelector('#blocked-list').children[1].children[1].click();
+  assert.match(topSitesList.children[0].children[1].textContent, /Adicionar às distrações/);
 
   await topSitesList.children[1].children[1].children[1].click();
   assert.match(page.document.querySelector('#productive-list').textContent, /docs\.google\.com/);

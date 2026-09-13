@@ -3,6 +3,7 @@ import { classifyTopSite, hostPermissionOrigins, validateConfiguration } from '.
 let blockedDomains = [];
 let productiveUrls = [];
 let frequentSites = [];
+const addedTopSites = new Map();
 const status = document.querySelector('#settings-status');
 const blockedList = document.querySelector('#blocked-list');
 const productiveList = document.querySelector('#productive-list');
@@ -20,12 +21,26 @@ function listButton(label, accessibleName, callback) {
   return button;
 }
 
-function renderTopSites() {
+function renderTopSites(focusDomain = null) {
+  let focusedFeedback = null;
   topSitesList.replaceChildren(...frequentSites.map((site) => {
     const item = document.createElement('li');
     item.className = 'top-site-item';
     const domain = document.createElement('span');
     domain.textContent = site.domain;
+    const added = addedTopSites.get(site.domain);
+    if (added) {
+      const feedback = document.createElement('span');
+      feedback.className = 'top-site-added';
+      feedback.setAttribute('role', 'status');
+      feedback.setAttribute('tabindex', '-1');
+      feedback.textContent = added.category === 'blocked'
+        ? 'Adicionado às distrações'
+        : 'Adicionado aos destinos produtivos';
+      if (site.domain === focusDomain) focusedFeedback = feedback;
+      item.append(domain, feedback);
+      return item;
+    }
     const actions = document.createElement('div');
     actions.className = 'top-site-actions';
     actions.append(
@@ -35,19 +50,30 @@ function renderTopSites() {
     item.append(domain, actions);
     return item;
   }));
+  return focusedFeedback;
 }
 
-function render() {
+function render(focusDomain = null) {
   blockedList.replaceChildren(...blockedDomains.map((domain, index) => {
-    const item = document.createElement('li'); item.append(document.createTextNode(domain), listButton('Remover', `Remover ${domain}`, () => { blockedDomains.splice(index, 1); render(); })); return item;
+    const item = document.createElement('li'); item.append(document.createTextNode(domain), listButton('Remover', `Remover ${domain}`, () => {
+      blockedDomains.splice(index, 1);
+      if (addedTopSites.get(domain)?.category === 'blocked') addedTopSites.delete(domain);
+      render();
+    })); return item;
   }));
   productiveList.replaceChildren(...productiveUrls.map((url, index) => {
     const item = document.createElement('li'); item.append(document.createTextNode(url));
     if (index > 0) item.append(listButton('Subir', `Subir ${url}`, () => { [productiveUrls[index - 1], productiveUrls[index]] = [productiveUrls[index], productiveUrls[index - 1]]; render(); }));
     if (index < productiveUrls.length - 1) item.append(listButton('Descer', `Descer ${url}`, () => { [productiveUrls[index], productiveUrls[index + 1]] = [productiveUrls[index + 1], productiveUrls[index]]; render(); }));
-    item.append(listButton('Remover', `Remover ${url}`, () => { productiveUrls.splice(index, 1); render(); })); return item;
+    item.append(listButton('Remover', `Remover ${url}`, () => {
+      productiveUrls.splice(index, 1);
+      for (const [domain, added] of addedTopSites) {
+        if (added.category === 'productive' && added.value === url) addedTopSites.delete(domain);
+      }
+      render();
+    })); return item;
   }));
-  renderTopSites();
+  return renderTopSites(focusDomain);
 }
 
 function classifyFrequentSite(site, category) {
@@ -58,7 +84,11 @@ function classifyFrequentSite(site, category) {
   }
   blockedDomains = result.configuration.blockedDomains;
   productiveUrls = result.configuration.productiveUrls;
-  render();
+  addedTopSites.set(site.domain, {
+    category,
+    value: category === 'blocked' ? site.domain : site.productiveUrl,
+  });
+  render(site.domain)?.focus();
   announce(category === 'blocked'
     ? `${site.domain} adicionado à lista de distrações.`
     : `${site.domain} adicionado aos destinos produtivos.`);

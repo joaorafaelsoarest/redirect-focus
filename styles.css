@@ -27,5 +27,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .item-list { display: grid; gap: .45rem; padding: 0; list-style-position: inside; }.item-list li { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .6rem .7rem; border-radius: .55rem; background: #edf3e9; overflow-wrap: anywhere; }.text-button { min-height: 2rem; border-color: #aabcb1; padding: .2rem .5rem; }
 .top-site-item { justify-content: space-between; }.top-site-item > span { font-weight: 650; }.top-site-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
 .top-site-actions .text-button { min-height: 2.25rem; }
+.top-site-added { display: inline-flex; align-items: center; min-height: 2rem; padding: .3rem .65rem; border-radius: .45rem; color: #1e6845; background: #d9ead8; font-size: .9rem; font-weight: 700; }
 .actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-top: 2.4rem; }.actions label { font-weight: 650; }
 @media (max-width: 460px) { .popup main { width: auto; }.stats { grid-template-columns: 1fr; }.inline-form { grid-template-columns: 1fr; }.inline-form button { width: 100%; } }
