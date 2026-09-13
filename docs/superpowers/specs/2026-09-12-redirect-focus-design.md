@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Extensão Chrome Manifest V3, inteiramente local e em pt-BR, que intercepta somente navegações de nível principal para domínios escolhidos. Uma navegação interceptada abre uma página interna calma por três segundos e, então, redireciona a própria aba para o próximo endereço produtivo em rotação.
+Extensão Chrome Manifest V3, inteiramente local e em pt-BR, que intercepta somente navegações de nível principal para domínios escolhidos. Uma navegação interceptada abre uma página interna calma, onde a pessoa pode escolher um destino produtivo salvo para ir imediatamente. Sem escolha, a página espera cinco segundos e redireciona a própria aba para o próximo endereço produtivo em rotação.
 
 ## Arquitetura
 
-`lib/core.js` contém funções puras para normalizar e validar domínios/URLs, impedir conflitos, converter e classificar sites frequentes, construir regras DNR, escolher a rotação, calcular estatísticas diárias e representar a pausa. `service-worker.js` adapta essas funções ao Chrome: inicializa dados, consulta sites frequentes somente após uma ação explícita e autorização, solicita permissões opcionais específicas, sincroniza regras dinâmicas, controla alarmes e executa o redirecionamento final. A página de transição apenas pede ao serviço o próximo destino, aguarda três segundos e substitui a URL atual. Popup e opções são interfaces separadas que chamam uma pequena API por mensagens.
+`lib/core.js` contém funções puras para normalizar e validar domínios/URLs, impedir conflitos, converter e classificar sites frequentes, construir regras DNR, escolher a rotação, calcular estatísticas diárias e representar a pausa. `service-worker.js` adapta essas funções ao Chrome: inicializa dados, consulta sites frequentes somente após uma ação explícita e autorização, solicita permissões opcionais específicas, sincroniza regras dinâmicas, controla alarmes e executa o redirecionamento final. A página de transição pede ao serviço o destino automático e a lista salva, exibe os destinos como opções imediatas e, se nenhuma for escolhida, aguarda cinco segundos antes de substituir a URL atual. A rotação avança uma posição por ocorrência, inclusive quando há escolha manual. Popup e opções são interfaces separadas que chamam uma pequena API por mensagens.
 
 ## Dados locais
 

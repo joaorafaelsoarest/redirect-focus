@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/core.test.js && node test/service-worker.test.js && node test/options.test.js",
+    "test": "node test/core.test.js && node test/service-worker.test.js && node test/options.test.js && node test/transition.test.js",
     "check": "node --check lib/core.js && node --check service-worker.js && node --check popup.js && node --check options.js && node --check transition.js"
   }
 }

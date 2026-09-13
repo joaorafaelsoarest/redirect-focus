@@ -237,6 +237,31 @@ test('transições concorrentes recebem destinos consecutivos e preservam a rota
   assert.equal(Object.values(chrome.data.dailyRedirects).reduce((sum, count) => sum + count, 0), 2);
 });
 
+test('retorna os destinos produtivos na ordem salva junto com a escolha automática', async () => {
+  const chrome = createChrome();
+  chrome.data.productiveUrls = [
+    'https://trello.com',
+    'https://docs.google.com/document/d/123',
+    'https://substack.com',
+  ];
+  chrome.data.rotationIndex = 1;
+  const service = createFocusService(chrome);
+
+  const result = await service.getRedirectTarget();
+
+  assert.deepEqual(result, {
+    ok: true,
+    url: 'https://docs.google.com/document/d/123',
+    destinations: [
+      'https://trello.com',
+      'https://docs.google.com/document/d/123',
+      'https://substack.com',
+    ],
+  });
+  assert.equal(chrome.data.rotationIndex, 2);
+  assert.equal(Object.values(chrome.data.dailyRedirects).reduce((sum, count) => sum + count, 0), 1);
+});
+
 test('estado expõe o próximo destino calculado pela rotação atual', async () => {
   const chrome = createChrome();
   chrome.data.productiveUrls = ['https://trello.com', 'https://substack.com'];

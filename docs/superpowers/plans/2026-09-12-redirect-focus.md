@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir uma extensão Chrome local que redireciona distrações para destinos produtivos após uma transição de três segundos.
+**Goal:** Construir uma extensão Chrome local que redireciona distrações para destinos produtivos, com escolha manual imediata ou rotação automática após cinco segundos.
 
 **Architecture:** Funções puras em `lib/core.js`; `service-worker.js` traduz ações da extensão para armazenamento, permissões, DNR e alarmes. As páginas internas comunicam-se por mensagens e não acessam páginas externas.
 

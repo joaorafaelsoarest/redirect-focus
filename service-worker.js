@@ -158,7 +158,7 @@ export function createFocusService(chromeApi) {
     if (!rotation) return { ok: false, error: 'Nenhum destino produtivo está configurado.' };
     const dailyRedirects = pruneDaily(recordRedirect(state.dailyRedirects));
     await chromeApi.storage.local.set({ rotationIndex: rotation.nextIndex, dailyRedirects });
-    return { ok: true, url: rotation.url };
+    return { ok: true, url: rotation.url, destinations: [...state.productiveUrls] };
   }
 
   function getRedirectTarget() {
