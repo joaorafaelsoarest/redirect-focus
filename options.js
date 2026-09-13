@@ -1,4 +1,4 @@
-import { classifyTopSite, domainsOverlap, hostPermissionOrigins, normalizeProductiveUrl, remainingPauseMinutes, validateConfiguration } from './lib/core.js';
+import { classifyTopSite, domainsOverlap, hostPermissionOrigins, normalizeProductiveUrl, pauseState, remainingPauseMinutes, validateConfiguration } from './lib/core.js';
 
 const TOP_SITE_BATCH_SIZE = 5;
 let blockedDomains = [];
@@ -15,7 +15,7 @@ const pauseCountdown = document.querySelector('#pause-countdown');
 const pauseStatus = document.querySelector('#pause-status');
 const resumeButton = document.querySelector('#resume');
 let currentPause = { paused: false, pauseUntil: null };
-let displayedPauseMinutes = null;
+let displayedPauseMinutes;
 let pauseRefreshTimer;
 
 function announce(text, error = false) {
@@ -212,6 +212,10 @@ resumeButton.addEventListener('click', async () => {
   const result = await send('resume');
   if (result.ok) renderPause({ paused: false, pauseUntil: null });
   announcePause(result.ok ? 'Proteção retomada.' : result.error, !result.ok);
+});
+
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.pauseUntil) renderPause(pauseState(changes.pauseUntil.newValue));
 });
 
 (async () => { try { const state = await send('getState'); blockedDomains = state.blockedDomains; productiveUrls = state.productiveUrls; renderPause(state.pause); render(); } catch { announce('Não foi possível carregar as configurações.', true); } })();

@@ -48,17 +48,21 @@ export function createFocusService(chromeApi) {
   }
 
   async function showPauseNotification(title, message) {
-    if (!chromeApi.notifications || !await chromeApi.permissions.contains({ permissions: ['notifications'] })) return;
-    await chromeApi.notifications.create(PAUSE_NOTIFICATION, {
-      type: 'basic',
-      iconUrl: 'icons/icon-128.png',
-      title,
-      message,
-    });
+    try {
+      if (!chromeApi.notifications || !await chromeApi.permissions.contains({ permissions: ['notifications'] })) return;
+      await chromeApi.notifications.create(PAUSE_NOTIFICATION, {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title,
+        message,
+      });
+    } catch {}
   }
 
   async function clearPauseNotification() {
-    if (chromeApi.notifications) await chromeApi.notifications.clear(PAUSE_NOTIFICATION);
+    try {
+      if (chromeApi.notifications) await chromeApi.notifications.clear(PAUSE_NOTIFICATION);
+    } catch {}
   }
 
   async function synchronizeRulesInternal(state) {
