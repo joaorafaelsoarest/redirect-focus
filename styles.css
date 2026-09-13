@@ -34,7 +34,7 @@ button:hover { background: #21553c; } button.secondary, .text-button { color: #2
 input, select { border: 1px solid #aabcb1; padding: .45rem .65rem; color: #19352c; background: white; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #f2a742; outline-offset: 2px; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: .55rem; align-items: end; }.inline-form label { grid-column: 1 / -1; font-weight: 650; }.inline-form input { width: 100%; }
-.suggestions { display: flex; flex-wrap: wrap; gap: .45rem; margin: .75rem 0; align-items: center; color: #52655e; font-size: .9rem; }.suggestions button { min-height: 2rem; padding: .2rem .55rem; color: #285d45; border-color: #aabcb1; background: white; }
+.suggestions { display: flex; flex-wrap: wrap; gap: .45rem; margin: .75rem 0; align-items: center; color: #52655e; font-size: .9rem; }.suggestions[hidden], .suggestions button[hidden] { display: none; }.suggestions button { min-height: 2rem; padding: .2rem .55rem; color: #285d45; border-color: #aabcb1; background: white; }
 .item-list { display: grid; gap: .45rem; padding: 0; list-style-position: inside; }.item-list li { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .6rem .7rem; border-radius: .55rem; background: #edf3e9; overflow-wrap: anywhere; }.text-button { min-height: 2rem; border-color: #aabcb1; padding: .2rem .5rem; }
 .top-site-item { justify-content: space-between; }.top-site-item > span { font-weight: 650; }.top-site-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
 .top-site-actions .text-button { min-height: 2.25rem; }

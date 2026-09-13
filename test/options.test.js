@@ -10,6 +10,8 @@ class FakeElement {
     this.classNames = new Set();
     this.value = '';
     this.disabled = false;
+    this.hidden = false;
+    this.parentElement = null;
     this.textWrites = 0;
     this.classList = {
       toggle: (name, force) => {
@@ -39,6 +41,25 @@ class FakeElement {
 
 function makeDocument() {
   const elements = new Map();
+  const blockedSuggestions = new FakeElement();
+  const productiveSuggestions = new FakeElement();
+  const createSuggestions = (container, dataKey, values) => values.map((value) => {
+    const button = new FakeElement();
+    button.dataset[dataKey] = value;
+    button.parentElement = container;
+    button.textContent = value;
+    container.children.push(button);
+    return button;
+  });
+  const suggestionButtons = {
+    '[data-blocked]': createSuggestions(blockedSuggestions, 'blocked', [
+      'facebook.com', 'instagram.com', 'tiktok.com', 'x.com', 'reddit.com', 'youtube.com', 'twitch.tv', 'discord.com', 'threads.net',
+    ]),
+    '[data-productive]': createSuggestions(productiveSuggestions, 'productive', [
+      'https://trello.com', 'https://substack.com', 'https://docs.google.com', 'https://drive.google.com', 'https://calendar.google.com',
+      'https://notion.so', 'https://github.com', 'https://linear.app', 'https://todoist.com',
+    ]),
+  };
   const document = {
     activeElement: null,
     querySelector(selector) {
@@ -49,7 +70,7 @@ function makeDocument() {
       }
       return elements.get(selector);
     },
-    querySelectorAll() { return []; },
+    querySelectorAll(selector) { return suggestionButtons[selector] ?? []; },
     createElement() { const element = new FakeElement(); element.ownerDocument = document; return element; },
     createTextNode(text) { return { textContent: String(text) }; },
   };
@@ -62,15 +83,20 @@ function event() {
 }
 
 let scenario = 0;
-async function mountOptionsPage({ pause = { paused: false, pauseUntil: null }, clock = null } = {}) {
+async function mountOptionsPage({
+  pause = { paused: false, pauseUntil: null },
+  clock = null,
+  blockedDomains = ['instagram.com'],
+  productiveUrls = ['https://trello.com'],
+} = {}) {
   const document = makeDocument();
   const messages = [];
   const permissionRequests = [];
   let permissionGranted = false;
   let topSitesResponse = { ok: true, sites: [] };
   const initialState = {
-    blockedDomains: ['instagram.com'],
-    productiveUrls: ['https://trello.com'],
+    blockedDomains,
+    productiveUrls,
     pause,
   };
   const originalDateNow = Date.now;
@@ -119,6 +145,73 @@ async function mountOptionsPage({ pause = { paused: false, pauseUntil: null }, c
     },
   };
 }
+
+test('oculta sugestões já selecionadas e mantém visíveis as disponíveis', async () => {
+  const page = await mountOptionsPage();
+  const blocked = page.document.querySelectorAll('[data-blocked]');
+  const productive = page.document.querySelectorAll('[data-productive]');
+  const findBlocked = (domain) => blocked.find((button) => button.dataset.blocked === domain);
+  const findProductive = (url) => productive.find((button) => button.dataset.productive === url);
+
+  assert.equal(findBlocked('instagram.com').hidden, true);
+  assert.equal(findBlocked('facebook.com').hidden, false);
+  assert.equal(findProductive('https://trello.com').hidden, true);
+  assert.equal(findProductive('https://docs.google.com').hidden, false);
+  assert.equal(blocked[0].parentElement.hidden, false);
+  assert.equal(productive[0].parentElement.hidden, false);
+});
+
+test('restaura a sugestão depois de adicioná-la e removê-la da lista', async () => {
+  const page = await mountOptionsPage();
+  const blocked = page.document.querySelectorAll('[data-blocked]');
+  const facebook = blocked.find((button) => button.dataset.blocked === 'facebook.com');
+
+  await facebook.click();
+  assert.equal(facebook.hidden, true);
+  await page.document.querySelector('#blocked-list').children.at(-1).children[1].click();
+  assert.equal(facebook.hidden, false);
+});
+
+test('oculta sugestões de ambas as listas para domínios sobrepostos adicionados manualmente', async () => {
+  const page = await mountOptionsPage();
+  const blocked = page.document.querySelectorAll('[data-blocked]');
+  const productive = page.document.querySelectorAll('[data-productive]');
+  const facebook = blocked.find((button) => button.dataset.blocked === 'facebook.com');
+  const trello = productive.find((button) => button.dataset.productive === 'https://trello.com');
+
+  await page.document.querySelector('#productive-list').children[0].children.at(-1).click();
+  assert.equal(trello.hidden, false);
+  const blockedInput = page.document.querySelector('#blocked-input');
+  blockedInput.value = 'work.trello.com';
+  await page.document.querySelector('#blocked-form').listeners.get('submit')({ preventDefault() {} });
+  assert.equal(trello.hidden, true);
+  await page.document.querySelector('#blocked-list').children.at(-1).children[1].click();
+  assert.equal(trello.hidden, false);
+
+  const productiveInput = page.document.querySelector('#productive-input');
+  productiveInput.value = 'https://www.facebook.com/work';
+  await page.document.querySelector('#productive-form').listeners.get('submit')({ preventDefault() {} });
+  assert.equal(facebook.hidden, true);
+  await page.document.querySelector('#productive-list').children.at(-1).children.at(-1).click();
+  assert.equal(facebook.hidden, false);
+});
+
+test('oculta o bloco de sugestões quando todas as opções já estão selecionadas', async () => {
+  const page = await mountOptionsPage({
+    blockedDomains: ['facebook.com', 'instagram.com', 'tiktok.com', 'x.com', 'reddit.com', 'youtube.com', 'twitch.tv', 'discord.com', 'threads.net'],
+    productiveUrls: [
+      'https://trello.com', 'https://substack.com', 'https://docs.google.com', 'https://drive.google.com', 'https://calendar.google.com',
+      'https://notion.so', 'https://github.com', 'https://linear.app', 'https://todoist.com',
+    ],
+  });
+  const blocked = page.document.querySelectorAll('[data-blocked]');
+  const productive = page.document.querySelectorAll('[data-productive]');
+
+  assert.equal(blocked.every((button) => button.hidden), true);
+  assert.equal(productive.every((button) => button.hidden), true);
+  assert.equal(blocked[0].parentElement.hidden, true);
+  assert.equal(productive[0].parentElement.hidden, true);
+});
 
 test('consulta sites só após clique, trata recusa/vazio/erro e classifica sem salvar automaticamente', async () => {
   const page = await mountOptionsPage();

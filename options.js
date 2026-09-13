@@ -64,6 +64,25 @@ function availableTopSites() {
   return frequentSites.filter((site) => !isSiteSelected(site));
 }
 
+function renderSuggestionGroup(selector, getDomain) {
+  const buttons = [...document.querySelectorAll(selector)];
+  buttons.forEach((button) => {
+    let domain;
+    try {
+      domain = getDomain(button);
+    } catch {
+      domain = null;
+    }
+    button.hidden = domain ? isSiteSelected({ domain }) : false;
+  });
+  if (buttons.length) buttons[0].parentElement.hidden = buttons.every((button) => button.hidden);
+}
+
+function renderSuggestions() {
+  renderSuggestionGroup('[data-blocked]', (button) => button.dataset.blocked);
+  renderSuggestionGroup('[data-productive]', (button) => new URL(normalizeProductiveUrl(button.dataset.productive)).hostname);
+}
+
 function renderTopSites() {
   const sites = availableTopSites();
   topSitesList.replaceChildren(...sites.slice(0, visibleTopSiteCount).map((site) => {
@@ -99,6 +118,7 @@ function render() {
       render();
     })); return item;
   }));
+  renderSuggestions();
   renderTopSites();
 }
 
