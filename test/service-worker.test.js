@@ -7,19 +7,24 @@ function event() {
   return { addListener(listener) { listeners.push(listener); }, async emit(...args) { return Promise.all(listeners.map((listener) => listener(...args))); } };
 }
 
-function createChrome({ permissionGranted = true } = {}) {
+function createChrome({ permissionGranted = true, grantedPermissions = [], topSites = [], topSitesError = null } = {}) {
   const data = {};
   const rules = [];
   const alarms = new Map();
   const grantedOrigins = new Set();
+  const namedPermissions = new Set(grantedPermissions);
+  const permissionChecks = [];
   const permissionRequests = [];
   const permissionRemovals = [];
   let optionsPageCalls = 0;
+  let topSitesCalls = 0;
   return {
-    data, rules, alarmStore: alarms, grantedOrigins, permissionRequests, permissionRemovals,
+    data, rules, alarmStore: alarms, grantedOrigins, permissionChecks, permissionRequests, permissionRemovals,
     get optionsPageCalls() { return optionsPageCalls; },
+    get topSitesCalls() { return topSitesCalls; },
     grantOrigins(origins) { origins.forEach((origin) => grantedOrigins.add(origin)); },
     revokeOrigins(origins) { origins.forEach((origin) => grantedOrigins.delete(origin)); },
+    grantPermissions(permissions) { permissions.forEach((permission) => namedPermissions.add(permission)); },
     storage: { local: {
       async get(defaults) { return { ...defaults, ...data }; },
       async set(values) { Object.assign(data, values); },
@@ -32,10 +37,22 @@ function createChrome({ permissionGranted = true } = {}) {
       },
     },
     permissions: {
-      async contains({ origins = [] }) { return origins.every((origin) => grantedOrigins.has(origin)); },
+      async contains(request = {}) {
+        permissionChecks.push(request);
+        const { origins = [], permissions = [] } = request;
+        return origins.every((origin) => grantedOrigins.has(origin))
+          && permissions.every((permission) => namedPermissions.has(permission));
+      },
       async request({ origins = [] }) { permissionRequests.push(origins); if (permissionGranted) origins.forEach((origin) => grantedOrigins.add(origin)); return permissionGranted; },
       async remove({ origins = [] }) { permissionRemovals.push(origins); origins.forEach((origin) => grantedOrigins.delete(origin)); this.onRemoved.emit({ origins }); return true; },
       onRemoved: event(),
+    },
+    topSites: {
+      async get() {
+        topSitesCalls += 1;
+        if (topSitesError) throw topSitesError;
+        return topSites;
+      },
     },
     alarms: { create(name, info) { alarms.set(name, info); }, async get(name) { return alarms.get(name); }, async clear(name) { alarms.delete(name); return true; }, onAlarm: event() },
     runtime: {
@@ -227,4 +244,61 @@ test('estado expõe o próximo destino calculado pela rotação atual', async ()
   const service = createFocusService(chrome);
   const state = await service.getState();
   assert.equal(state.nextDestination, 'https://substack.com');
+});
+
+test('não consulta os sites frequentes sem a permissão topSites nem altera a configuração', async () => {
+  const chrome = createChrome();
+  chrome.data.blockedDomains = ['reddit.com'];
+  chrome.data.productiveUrls = ['https://docs.google.com'];
+  const savedConfiguration = structuredClone(chrome.data);
+  const service = createFocusService(chrome);
+
+  const result = await service.getTopSites?.();
+
+  assert.equal(result?.ok, false);
+  assert.equal(typeof result?.error, 'string');
+  assert.ok(chrome.permissionChecks.some((request) => JSON.stringify(request) === JSON.stringify({ permissions: ['topSites'] })));
+  assert.equal(chrome.topSitesCalls, 0);
+  assert.deepEqual(chrome.data, savedConfiguration);
+});
+
+test('consulta os sites frequentes permitidos, normaliza e deduplica sem salvá-los', async () => {
+  const chrome = createChrome({ topSites: [
+    { url: 'https://www.Example.com/path?campaign=1#section', title: 'Example' },
+    { url: 'http://example.com/another-page', title: 'Duplicate' },
+    { url: 'ftp://files.example.net/download', title: 'Unsupported protocol' },
+    { url: 'chrome://settings', title: 'Browser settings' },
+    { url: 'https://localhost/local', title: 'Invalid host' },
+  ] });
+  chrome.grantPermissions(['topSites']);
+  chrome.data.blockedDomains = ['reddit.com'];
+  chrome.data.productiveUrls = ['https://docs.google.com'];
+  const savedConfiguration = structuredClone(chrome.data);
+  const service = createFocusService(chrome);
+
+  const result = await service.getTopSites?.();
+
+  assert.deepEqual(result, {
+    ok: true,
+    sites: [{ domain: 'example.com', productiveUrl: 'https://example.com' }],
+  });
+  assert.equal(chrome.topSitesCalls, 1);
+  assert.deepEqual(chrome.data, savedConfiguration);
+});
+
+test('mensagem getTopSites do runtime responde com os sites consultados', async () => {
+  const chrome = createChrome({ topSites: [{ url: 'https://www.example.org/path', title: 'Example' }] });
+  chrome.grantPermissions(['topSites']);
+  const service = createFocusService(chrome);
+  service.bindEvents();
+  let respond;
+  const response = new Promise((resolve) => { respond = resolve; });
+
+  const keepChannelOpen = await chrome.runtime.onMessage.emit({ type: 'getTopSites' }, {}, respond);
+
+  assert.deepEqual(keepChannelOpen, [true]);
+  assert.deepEqual(await response, {
+    ok: true,
+    sites: [{ domain: 'example.org', productiveUrl: 'https://example.org' }],
+  });
 });

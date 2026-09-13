@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildRedirectRules,
+  classifyTopSite,
   domainsOverlap,
   hostPermissionOrigins,
   nextRotation,
   normalizeDomain,
   normalizeProductiveUrl,
+  normalizeTopSites,
   pauseState,
   recordRedirect,
   statistics,
@@ -23,6 +25,74 @@ test('rejeita domínio e URL produtiva inválidos', () => {
   assert.throws(() => normalizeDomain('localhost'), /Domínio inválido/);
   assert.throws(() => normalizeProductiveUrl('ftp://trello.com'), /URL inválida/);
   assert.equal(normalizeProductiveUrl('trello.com/pessoal'), 'https://trello.com/pessoal');
+});
+
+test('normaliza sites frequentes em domínios e URLs-base', () => {
+  assert.deepEqual(normalizeTopSites([
+    { url: 'https://www.youtube.com/watch?v=example' },
+    { url: 'http://www.example.com/caminho?segredo=1#secao' },
+  ]), [
+    { domain: 'youtube.com', productiveUrl: 'https://youtube.com' },
+    { domain: 'example.com', productiveUrl: 'http://example.com' },
+  ]);
+});
+
+test('ignora sites frequentes que não sejam HTTP(S) e remove domínios duplicados', () => {
+  assert.deepEqual(normalizeTopSites([
+    { url: 'chrome://settings/' },
+    { url: 'file:///tmp/page.html' },
+    { url: 'https://www.example.com/primeira' },
+    { url: 'https://example.com/segunda' },
+    { url: 'not a URL' },
+  ]), [
+    { domain: 'example.com', productiveUrl: 'https://example.com' },
+  ]);
+});
+
+test('classifica um site frequente na lista escolhida sem alterar a outra lista', () => {
+  assert.deepEqual(classifyTopSite({
+    blockedDomains: ['instagram.com'],
+    productiveUrls: ['https://trello.com'],
+  }, { domain: 'reddit.com', productiveUrl: 'https://reddit.com' }, 'blocked'), {
+    ok: true,
+    configuration: {
+      blockedDomains: ['instagram.com', 'reddit.com'],
+      productiveUrls: ['https://trello.com'],
+    },
+  });
+  assert.deepEqual(classifyTopSite({
+    blockedDomains: ['instagram.com'],
+    productiveUrls: ['https://trello.com'],
+  }, { domain: 'docs.google.com', productiveUrl: 'https://docs.google.com' }, 'productive'), {
+    ok: true,
+    configuration: {
+      blockedDomains: ['instagram.com'],
+      productiveUrls: ['https://trello.com', 'https://docs.google.com'],
+    },
+  });
+  assert.deepEqual(classifyTopSite({
+    blockedDomains: ['reddit.com'],
+    productiveUrls: ['https://trello.com'],
+  }, { domain: 'old.reddit.com', productiveUrl: 'https://old.reddit.com' }, 'blocked'), {
+    ok: false,
+    error: 'Esse item já está na lista.',
+  });
+});
+
+test('recusa classificar um site frequente quando ele conflita com a outra lista', () => {
+  const configuration = { blockedDomains: ['instagram.com'], productiveUrls: ['https://youtube.com'] };
+  assert.deepEqual(classifyTopSite(configuration, {
+    domain: 'www.youtube.com', productiveUrl: 'https://youtube.com',
+  }, 'blocked'), {
+    ok: false,
+    error: 'Um destino produtivo não pode usar um domínio bloqueado.',
+  });
+  assert.deepEqual(classifyTopSite(configuration, {
+    domain: 'instagram.com', productiveUrl: 'https://instagram.com',
+  }, 'productive'), {
+    ok: false,
+    error: 'Um destino produtivo não pode usar um domínio bloqueado.',
+  });
 });
 
 test('impede domínio bloqueado de coincidir com destino produtivo', () => {

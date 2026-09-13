@@ -4,6 +4,7 @@ import {
   nextRotation,
   normalizeDomain,
   normalizeProductiveUrl,
+  normalizeTopSites,
   pauseState,
   recordRedirect,
   statistics,
@@ -164,6 +165,19 @@ export function createFocusService(chromeApi) {
     return serialize(allocateRedirectTarget);
   }
 
+  async function getTopSites() {
+    const permitted = await chromeApi.permissions.contains({ permissions: ['topSites'] });
+    if (!permitted) {
+      return { ok: false, error: 'Autorize o acesso aos sites mais visitados do Chrome para buscar sugestões.' };
+    }
+    try {
+      const entries = await chromeApi.topSites.get();
+      return { ok: true, sites: normalizeTopSites(entries) };
+    } catch (error) {
+      return { ok: false, error: error.message || 'Não foi possível buscar os sites mais visitados.' };
+    }
+  }
+
   async function handleInstalled(details) {
     await initialize();
     if (details?.reason !== 'install') return;
@@ -187,6 +201,7 @@ export function createFocusService(chromeApi) {
         pause: () => pause(message.minutes),
         resume,
         getRedirectTarget,
+        getTopSites,
       };
       const action = actions[message?.type];
       if (!action) return false;
@@ -195,7 +210,7 @@ export function createFocusService(chromeApi) {
     });
   }
 
-  return { initialize, saveConfiguration, pause, resume, getState, getRedirectTarget, synchronizeRules, bindEvents };
+  return { initialize, saveConfiguration, pause, resume, getState, getRedirectTarget, getTopSites, synchronizeRules, bindEvents };
 }
 
 if (typeof globalThis.chrome !== 'undefined') {
