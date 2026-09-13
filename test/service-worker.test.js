@@ -225,6 +225,97 @@ test('recusa salvar domínio sem permissão sem solicitar prompt no worker', asy
   assert.deepEqual(chrome.rules, []);
 });
 
+test('classifica distração imediatamente e sincroniza sua regra', async () => {
+  const chrome = createChrome();
+  chrome.data.productiveUrls = ['https://trello.com'];
+  chrome.grantOrigins(['*://reddit.com/*', '*://*.reddit.com/*']);
+  const service = createFocusService(chrome);
+
+  const result = await service.classifySite('https://www.reddit.com/r/focus?campaign=private', 'blocked');
+
+  assert.deepEqual(result, {
+    ok: true,
+    changed: true,
+    category: 'blocked',
+    domain: 'reddit.com',
+    hasFocusDestination: true,
+  });
+  assert.deepEqual(chrome.data.blockedDomains, ['reddit.com']);
+  assert.deepEqual(chrome.data.productiveUrls, ['https://trello.com']);
+  assert.deepEqual(chrome.rules.map((rule) => rule.condition.urlFilter), ['||reddit.com^']);
+});
+
+test('não grava distração se a permissão de domínio não estiver concedida', async () => {
+  const chrome = createChrome();
+  const service = createFocusService(chrome);
+
+  const result = await service.classifySite('https://reddit.com/r/focus', 'blocked');
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: 'Autorize reddit.com para adicioná-lo às distrações.',
+  });
+  assert.equal(chrome.data.blockedDomains, undefined);
+  assert.deepEqual(chrome.permissionRequests, []);
+  assert.deepEqual(chrome.rules, []);
+});
+
+test('salva distração sem destino de foco e mantém a proteção sem regras', async () => {
+  const chrome = createChrome();
+  chrome.grantOrigins(['*://reddit.com/*', '*://*.reddit.com/*']);
+  const service = createFocusService(chrome);
+
+  const result = await service.classifySite('https://reddit.com', 'blocked');
+
+  assert.deepEqual(result, {
+    ok: true,
+    changed: true,
+    category: 'blocked',
+    domain: 'reddit.com',
+    hasFocusDestination: false,
+  });
+  assert.deepEqual(chrome.data.blockedDomains, ['reddit.com']);
+  assert.deepEqual(chrome.data.productiveUrls, []);
+  assert.deepEqual(chrome.rules, []);
+});
+
+test('mover distração para foco remove bloqueio e revoga permissão não mais necessária', async () => {
+  const chrome = createChrome();
+  chrome.data.blockedDomains = ['example.com'];
+  chrome.data.productiveUrls = ['https://trello.com'];
+  chrome.grantOrigins(['*://example.com/*', '*://*.example.com/*']);
+  const service = createFocusService(chrome);
+
+  const result = await service.classifySite('https://docs.example.com/document/1', 'productive');
+
+  assert.deepEqual(result, {
+    ok: true,
+    changed: true,
+    category: 'productive',
+    domain: 'docs.example.com',
+    hasFocusDestination: true,
+  });
+  assert.deepEqual(chrome.data.blockedDomains, []);
+  assert.deepEqual(chrome.data.productiveUrls, ['https://trello.com', 'https://docs.example.com']);
+  assert.deepEqual(chrome.permissionRemovals, [['*://example.com/*', '*://*.example.com/*']]);
+  assert.deepEqual(chrome.rules, []);
+});
+
+test('mensagem classifySite expõe a categorização rápida à interface', async () => {
+  const chrome = createChrome();
+  const service = createFocusService(chrome);
+  service.bindEvents();
+  let respond;
+  const response = new Promise((resolve) => { respond = resolve; });
+
+  const keepChannelOpen = await chrome.runtime.onMessage.emit({
+    type: 'classifySite', url: 'chrome://settings/', category: 'productive',
+  }, {}, respond);
+
+  assert.deepEqual(keepChannelOpen, [true]);
+  assert.deepEqual(await response, { ok: false, error: 'Esta página não pode ser classificada.' });
+});
+
 test('configuração com conflito não persiste estado nem ativa regras', async () => {
   const chrome = createChrome();
   chrome.grantOrigins(['*://instagram.com/*', '*://*.instagram.com/*']);

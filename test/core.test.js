@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import * as core from '../lib/core.js';
 const {
   buildRedirectRules,
+  classifyCurrentSite,
   classifyTopSite,
   domainsOverlap,
   hostPermissionOrigins,
   nextRotation,
   normalizeDomain,
+  normalizeCurrentSite,
   normalizeProductiveUrl,
   normalizeTopSites,
   pauseState,
@@ -37,6 +39,66 @@ test('normaliza sites frequentes em domínios e URLs-base', () => {
     { domain: 'youtube.com', productiveUrl: 'https://youtube.com' },
     { domain: 'example.com', productiveUrl: 'http://example.com' },
   ]);
+});
+
+test('normaliza a aba atual para domínio e origem sem persistir caminho ou parâmetros', () => {
+  assert.deepEqual(normalizeCurrentSite('https://www.Example.com:8443/work?token=private#section'), {
+    domain: 'example.com',
+    productiveUrl: 'https://example.com:8443',
+  });
+});
+
+test('recusa páginas que não sejam HTTP ou HTTPS para classificação', () => {
+  assert.throws(() => normalizeCurrentSite('chrome://settings/'), /não pode ser classificada/i);
+  assert.throws(() => normalizeCurrentSite('file:///tmp/document.html'), /não pode ser classificada/i);
+});
+
+test('troca distração por foco removendo a entrada bloqueada sobreposta', () => {
+  assert.deepEqual(classifyCurrentSite({
+    blockedDomains: ['example.com', 'instagram.com'],
+    productiveUrls: ['https://trello.com/board'],
+  }, 'https://docs.example.com/document?private=1', 'productive'), {
+    ok: true,
+    changed: true,
+    category: 'productive',
+    domain: 'docs.example.com',
+    configuration: {
+      blockedDomains: ['instagram.com'],
+      productiveUrls: ['https://trello.com/board', 'https://docs.example.com'],
+    },
+  });
+});
+
+test('mantém a classificação ampla existente sem duplicar o domínio atual', () => {
+  assert.deepEqual(classifyCurrentSite({
+    blockedDomains: ['example.com'],
+    productiveUrls: ['https://trello.com'],
+  }, 'https://www.example.com/reels', 'blocked'), {
+    ok: true,
+    changed: false,
+    category: 'blocked',
+    domain: 'example.com',
+    configuration: {
+      blockedDomains: ['example.com'],
+      productiveUrls: ['https://trello.com'],
+    },
+  });
+});
+
+test('troca destinos produtivos por distração e remove destinos do mesmo domínio', () => {
+  assert.deepEqual(classifyCurrentSite({
+    blockedDomains: [],
+    productiveUrls: ['https://docs.example.com/document/1', 'https://docs.example.com/document/2', 'https://trello.com'],
+  }, 'https://www.docs.example.com/document/3', 'blocked'), {
+    ok: true,
+    changed: true,
+    category: 'blocked',
+    domain: 'docs.example.com',
+    configuration: {
+      blockedDomains: ['docs.example.com'],
+      productiveUrls: ['https://trello.com'],
+    },
+  });
 });
 
 test('ignora sites frequentes que não sejam HTTP(S) e remove domínios duplicados', () => {

@@ -1,12 +1,30 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css"><title>Redirect Focus</title></head>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="styles.css">
+    <title>Redirect Focus</title>
+  </head>
   <body class="popup">
     <main aria-labelledby="popup-title">
-      <p class="eyebrow">Redirect Focus</p><h1 id="popup-title">Seu foco, com gentileza.</h1>
+      <p class="eyebrow">Redirect Focus</p>
+      <h1 id="popup-title">Seu foco, com gentileza.</h1>
+      <section class="quick-classification" aria-labelledby="current-site-heading">
+        <h2 id="current-site-heading">Site atual</h2>
+        <p id="current-site-domain" class="current-site-domain">Identificando…</p>
+        <p id="classification-status" class="status" role="status" aria-live="polite">Carregando classificação…</p>
+        <div class="quick-actions">
+          <button id="classify-focus" type="button" class="secondary" disabled>Adicionar à lista de Foco</button>
+          <button id="classify-distraction" type="button" disabled>Adicionar à lista de Distração</button>
+        </div>
+      </section>
       <p id="protection-status" class="status" role="status">Carregando…</p>
       <button id="resume" type="button" class="secondary" hidden>Retomar agora</button>
-      <section class="stats" aria-label="Redirecionamentos"><div><strong id="today-total">0</strong><span>hoje</span></div><div><strong id="week-total">0</strong><span>nos últimos 7 dias</span></div></section>
+      <section class="stats" aria-label="Redirecionamentos">
+        <div><strong id="today-total">0</strong><span>hoje</span></div>
+        <div><strong id="week-total">0</strong><span>nos últimos 7 dias</span></div>
+      </section>
       <button id="open-options" type="button">Abrir configurações</button>
     </main>
     <script type="module" src="popup.js"></script>

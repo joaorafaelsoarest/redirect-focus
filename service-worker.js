@@ -1,5 +1,6 @@
 import {
   buildRedirectRules,
+  classifyCurrentSite,
   hostPermissionOrigins,
   nextRotation,
   normalizeDomain,
@@ -133,6 +134,46 @@ export function createFocusService(chromeApi) {
   }
   function saveConfiguration(raw) { return serialize(() => saveConfigurationInternal(raw)); }
 
+  async function classifySiteInternal(url, category) {
+    const state = await configuration();
+    const classification = classifyCurrentSite(state, url, category);
+    if (!classification.ok) return classification;
+
+    if (category === 'blocked') {
+      const origins = hostPermissionOrigins([classification.domain]);
+      if (!await chromeApi.permissions.contains({ origins })) {
+        return { ok: false, error: `Autorize ${classification.domain} para adicioná-lo às distrações.` };
+      }
+    }
+
+    const next = classification.configuration;
+    if (classification.changed) {
+      const removedDomains = state.blockedDomains.filter((domain) => !next.blockedDomains.includes(domain));
+      if (removedDomains.length) {
+        const remainingOrigins = new Set(hostPermissionOrigins(next.blockedDomains));
+        const originsToRemove = hostPermissionOrigins(removedDomains).filter((origin) => !remainingOrigins.has(origin));
+        if (originsToRemove.length) {
+          const removed = await chromeApi.permissions.remove({ origins: originsToRemove });
+          if (!removed) return { ok: false, error: 'Não foi possível revogar a permissão do domínio reclassificado.' };
+        }
+      }
+      await chromeApi.storage.local.set({
+        blockedDomains: next.blockedDomains,
+        productiveUrls: next.productiveUrls,
+      });
+      await synchronizeRulesInternal({ ...state, ...next });
+    }
+
+    return {
+      ok: true,
+      changed: classification.changed,
+      category,
+      domain: classification.domain,
+      hasFocusDestination: next.productiveUrls.length > 0,
+    };
+  }
+  function classifySite(url, category) { return serialize(() => classifySiteInternal(url, category)); }
+
   async function pauseInternal(minutes, now = Date.now()) {
     if (![15, 30, 60].includes(Number(minutes))) {
       return { ok: false, error: 'Escolha uma pausa de 15, 30 ou 60 minutos.' };
@@ -229,6 +270,7 @@ export function createFocusService(chromeApi) {
       const actions = {
         getState,
         saveConfiguration: () => saveConfiguration(message.configuration),
+        classifySite: () => classifySite(message.url, message.category),
         pause: () => pause(message.minutes),
         resume,
         getRedirectTarget,
@@ -241,7 +283,7 @@ export function createFocusService(chromeApi) {
     });
   }
 
-  return { initialize, saveConfiguration, pause, resume, getState, getRedirectTarget, getTopSites, synchronizeRules, bindEvents };
+  return { initialize, saveConfiguration, classifySite, pause, resume, getState, getRedirectTarget, getTopSites, synchronizeRules, bindEvents };
 }
 
 if (typeof globalThis.chrome !== 'undefined') {
