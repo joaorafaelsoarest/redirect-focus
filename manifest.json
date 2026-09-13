@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Redirect Focus",
+  "version": "1.0.0",
+  "description": "Troca distrações por um pequeno intervalo de foco.",
+  "permissions": ["storage", "declarativeNetRequest", "alarms"],
+  "optional_host_permissions": ["*://*/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_title": "Redirect Focus", "default_popup": "popup.html" },
+  "options_page": "options.html",
+  "web_accessible_resources": [{
+    "resources": ["transition.html"],
+    "matches": ["<all_urls>"]
+  }]
+}
