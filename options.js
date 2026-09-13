@@ -1,14 +1,16 @@
-import { classifyTopSite, hostPermissionOrigins, validateConfiguration } from './lib/core.js';
+import { classifyTopSite, domainsOverlap, hostPermissionOrigins, normalizeProductiveUrl, validateConfiguration } from './lib/core.js';
 
+const TOP_SITE_BATCH_SIZE = 5;
 let blockedDomains = [];
 let productiveUrls = [];
 let frequentSites = [];
-const addedTopSites = new Map();
+let visibleTopSiteCount = TOP_SITE_BATCH_SIZE;
 const status = document.querySelector('#settings-status');
 const blockedList = document.querySelector('#blocked-list');
 const productiveList = document.querySelector('#productive-list');
 const topSitesList = document.querySelector('#top-sites-list');
 const loadTopSitesButton = document.querySelector('#load-top-sites');
+const showMoreTopSitesButton = document.querySelector('#show-more-top-sites');
 
 function announce(text, error = false) {
   status.textContent = text;
@@ -21,26 +23,27 @@ function listButton(label, accessibleName, callback) {
   return button;
 }
 
-function renderTopSites(focusDomain = null) {
-  let focusedFeedback = null;
-  topSitesList.replaceChildren(...frequentSites.map((site) => {
+function isSiteSelected(site) {
+  const matchesDomain = (candidate) => {
+    try { return domainsOverlap(site.domain, candidate); } catch { return false; }
+  };
+  if (blockedDomains.some(matchesDomain)) return true;
+  return productiveUrls.some((value) => {
+    try { return matchesDomain(new URL(normalizeProductiveUrl(value)).hostname); } catch { return false; }
+  });
+}
+
+function availableTopSites() {
+  return frequentSites.filter((site) => !isSiteSelected(site));
+}
+
+function renderTopSites() {
+  const sites = availableTopSites();
+  topSitesList.replaceChildren(...sites.slice(0, visibleTopSiteCount).map((site) => {
     const item = document.createElement('li');
     item.className = 'top-site-item';
     const domain = document.createElement('span');
     domain.textContent = site.domain;
-    const added = addedTopSites.get(site.domain);
-    if (added) {
-      const feedback = document.createElement('span');
-      feedback.className = 'top-site-added';
-      feedback.setAttribute('role', 'status');
-      feedback.setAttribute('tabindex', '-1');
-      feedback.textContent = added.category === 'blocked'
-        ? 'Adicionado às distrações'
-        : 'Adicionado aos destinos produtivos';
-      if (site.domain === focusDomain) focusedFeedback = feedback;
-      item.append(domain, feedback);
-      return item;
-    }
     const actions = document.createElement('div');
     actions.className = 'top-site-actions';
     actions.append(
@@ -50,14 +53,13 @@ function renderTopSites(focusDomain = null) {
     item.append(domain, actions);
     return item;
   }));
-  return focusedFeedback;
+  showMoreTopSitesButton.hidden = sites.length <= visibleTopSiteCount;
 }
 
-function render(focusDomain = null) {
+function render() {
   blockedList.replaceChildren(...blockedDomains.map((domain, index) => {
     const item = document.createElement('li'); item.append(document.createTextNode(domain), listButton('Remover', `Remover ${domain}`, () => {
       blockedDomains.splice(index, 1);
-      if (addedTopSites.get(domain)?.category === 'blocked') addedTopSites.delete(domain);
       render();
     })); return item;
   }));
@@ -67,13 +69,10 @@ function render(focusDomain = null) {
     if (index < productiveUrls.length - 1) item.append(listButton('Descer', `Descer ${url}`, () => { [productiveUrls[index], productiveUrls[index + 1]] = [productiveUrls[index + 1], productiveUrls[index]]; render(); }));
     item.append(listButton('Remover', `Remover ${url}`, () => {
       productiveUrls.splice(index, 1);
-      for (const [domain, added] of addedTopSites) {
-        if (added.category === 'productive' && added.value === url) addedTopSites.delete(domain);
-      }
       render();
     })); return item;
   }));
-  return renderTopSites(focusDomain);
+  renderTopSites();
 }
 
 function classifyFrequentSite(site, category) {
@@ -84,11 +83,9 @@ function classifyFrequentSite(site, category) {
   }
   blockedDomains = result.configuration.blockedDomains;
   productiveUrls = result.configuration.productiveUrls;
-  addedTopSites.set(site.domain, {
-    category,
-    value: category === 'blocked' ? site.domain : site.productiveUrl,
-  });
-  render(site.domain)?.focus();
+  render();
+  const nextAction = topSitesList.children[0]?.children[1]?.children[0];
+  (nextAction ?? (showMoreTopSitesButton.hidden ? loadTopSitesButton : showMoreTopSitesButton)).focus();
   announce(category === 'blocked'
     ? `${site.domain} adicionado à lista de distrações.`
     : `${site.domain} adicionado aos destinos produtivos.`);
@@ -109,6 +106,7 @@ document.querySelectorAll('[data-productive]').forEach((button) => button.addEve
 async function send(type, extra = {}) { return chrome.runtime.sendMessage({ type, ...extra }); }
 async function loadTopSites() {
   frequentSites = [];
+  visibleTopSiteCount = TOP_SITE_BATCH_SIZE;
   renderTopSites();
   loadTopSitesButton.disabled = true;
   announce('Buscando sites mais visitados…');
@@ -125,9 +123,10 @@ async function loadTopSites() {
     }
     frequentSites = Array.isArray(result.sites) ? result.sites : [];
     renderTopSites();
-    announce(frequentSites.length
-      ? `${frequentSites.length} sites disponíveis para classificar.`
-      : 'Nenhum site frequente compatível foi encontrado.');
+    const availableCount = availableTopSites().length;
+    announce(availableCount
+      ? `${availableCount} sites disponíveis para classificar.`
+      : 'Nenhum site frequente compatível e ainda não selecionado foi encontrado.');
   } catch {
     announce('Não foi possível buscar os sites mais visitados.', true);
   } finally {
@@ -136,6 +135,10 @@ async function loadTopSites() {
 }
 
 loadTopSitesButton.addEventListener('click', () => loadTopSites());
+showMoreTopSitesButton.addEventListener('click', () => {
+  visibleTopSiteCount += TOP_SITE_BATCH_SIZE;
+  renderTopSites();
+});
 
 async function save() {
   const result = await send('saveConfiguration', { configuration: { blockedDomains, productiveUrls } });

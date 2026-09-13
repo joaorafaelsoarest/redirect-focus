@@ -111,32 +111,56 @@ test('consulta sites só após clique, trata recusa/vazio/erro e classifica sem 
     { domain: 'reddit.com', productiveUrl: 'https://reddit.com' },
     { domain: 'docs.google.com', productiveUrl: 'https://docs.google.com' },
     { domain: 'instagram.com', productiveUrl: 'https://instagram.com' },
+    { domain: 'trello.com', productiveUrl: 'https://trello.com' },
   ] });
   await loadButton.click();
-  assert.equal(topSitesList.children.length, 3);
+  assert.equal(topSitesList.children.length, 2);
+  assert.doesNotMatch(topSitesList.textContent, /instagram\.com|trello\.com/);
   const reddit = topSitesList.children[0];
   const redditActions = reddit.children[1].children;
 
   await redditActions[0].click();
   assert.match(page.document.querySelector('#blocked-list').textContent, /reddit\.com/);
-  const redditFeedback = topSitesList.children[0].children[1];
-  assert.equal(redditFeedback.textContent, 'Adicionado às distrações');
-  assert.equal(redditFeedback.attributes.role, 'status');
-  assert.equal(page.document.activeElement, redditFeedback);
+  assert.doesNotMatch(topSitesList.textContent, /reddit\.com/);
+  assert.equal(page.document.activeElement, topSitesList.children[0].children[1].children[0]);
   await page.document.querySelector('#blocked-list').children[1].children[1].click();
-  assert.match(topSitesList.children[0].children[1].textContent, /Adicionar às distrações/);
+  assert.match(topSitesList.textContent, /reddit\.com/);
 
-  await topSitesList.children[1].children[1].children[1].click();
+  await topSitesList.children.find((item) => item.textContent.includes('docs.google.com')).children[1].children[1].click();
   assert.match(page.document.querySelector('#productive-list').textContent, /docs\.google\.com/);
-  assert.equal(topSitesList.children[1].children[1].textContent, 'Adicionado aos destinos produtivos');
+  assert.doesNotMatch(topSitesList.textContent, /docs\.google\.com/);
   assert.equal(page.messages.some(({ type }) => type === 'saveConfiguration'), false);
-  const instagramActions = topSitesList.children[2].children[1].children;
-  await instagramActions[1].click();
-  assert.match(status.textContent, /não pode usar um domínio bloqueado/);
-  assert.doesNotMatch(page.document.querySelector('#productive-list').textContent, /instagram\.com/);
+  const docsProductiveItem = page.document.querySelector('#productive-list').children[1];
+  await docsProductiveItem.children.at(-1).click();
+  assert.match(topSitesList.textContent, /docs\.google\.com/);
+  await page.document.querySelector('#blocked-list').children[0].children[1].click();
+  assert.match(topSitesList.textContent, /instagram\.com/);
 
   page.setTopSitesResponse({ ok: false, error: 'Falha simulada na consulta.' });
   await loadButton.click();
   assert.match(status.textContent, /Falha simulada na consulta/);
   assert.equal(topSitesList.children.length, 0);
+});
+
+test('revela sites frequentes em grupos de cinco e oculta a ação ao chegar ao fim', async () => {
+  const page = await mountOptionsPage();
+  page.setPermissionGranted(true);
+  page.setTopSitesResponse({ ok: true, sites: Array.from({ length: 12 }, (_, index) => ({
+    domain: `site${index + 1}.com`,
+    productiveUrl: `https://site${index + 1}.com`,
+  })) });
+
+  await page.document.querySelector('#load-top-sites').click();
+  const topSitesList = page.document.querySelector('#top-sites-list');
+  const showMoreButton = page.document.querySelector('#show-more-top-sites');
+  assert.equal(topSitesList.children.length, 5);
+  assert.equal(showMoreButton.hidden, false);
+
+  await showMoreButton.click();
+  assert.equal(topSitesList.children.length, 10);
+  assert.equal(showMoreButton.hidden, false);
+
+  await showMoreButton.click();
+  assert.equal(topSitesList.children.length, 12);
+  assert.equal(showMoreButton.hidden, true);
 });

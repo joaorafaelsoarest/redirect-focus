@@ -13,7 +13,7 @@ Uma extensão Chrome local, em português do Brasil, que transforma uma navegaç
 
 1. Em **Domínios que interrompem**, adicione um ou mais domínios. Facebook, Instagram, TikTok, X, Reddit, YouTube, Twitch, Discord e Threads aparecem como sugestões editáveis.
 2. Em **Destinos produtivos**, adicione pelo menos uma URL. Trello, Substack, Google Docs, Drive, Calendar, Notion, GitHub, Linear e Todoist aparecem como sugestões.
-3. Opcionalmente, clique em **Buscar sites mais acessados** para pedir ao Chrome a lista dos sites frequentes da nova aba. Escolha se cada site deve interromper o foco ou ser um destino produtivo; nada é adicionado até você salvar.
+3. Opcionalmente, clique em **Buscar sites mais acessados** para pedir ao Chrome a lista dos sites frequentes da nova aba. Sites que já estejam nas distrações ou nos destinos produtivos são omitidos. Os demais aparecem em grupos de cinco; clique em **Ver mais** para revelar os próximos. Escolha se cada site deve interromper o foco ou ser um destino produtivo; nada é adicionado até você salvar.
 4. Clique em **Salvar e ativar**. A extensão valida domínios, destinos e conflitos antes de pedir acesso. O Chrome solicita autorização para os domínios da lista; se você negar, nada é salvo nem ativado. Ao remover um domínio salvo, a extensão também revoga o acesso opcional correspondente.
 5. Ao abrir um domínio protegido, a aba mostrará uma transição de três segundos e seguirá para o próximo destino produtivo. A ordem é circular e pode ser reorganizada nas configurações.
 6. Use o popup para ver se a proteção está ativa/pausada, os redirecionamentos de hoje e dos últimos sete dias. As configurações permitem pausar por 15, 30 ou 60 minutos ou retomar imediatamente.
@@ -38,7 +38,7 @@ npm run check
 3. Acrescente `https://substack.com`, abra novamente Instagram duas vezes e confirme a alternância Trello → Substack → Trello.
 4. Pause por 15 minutos, confirme que Instagram não é interceptado, escolha **Retomar agora** e confirme que a interceptação volta.
 5. Tente adicionar `https://instagram.com` como destino e confirme que aparece a mensagem de conflito. Tente negar uma permissão de domínio e confirme que a regra não é ativada.
-6. Clique em **Buscar sites mais acessados**, aceite a permissão e confirme que sites HTTP(S) aparecem como sugestões. Adicione um como distração e outro como destino produtivo, salve e confirme que a configuração foi atualizada.
+6. Clique em **Buscar sites mais acessados**, aceite a permissão e confirme que sites HTTP(S) aparecem como sugestões em grupos de cinco, sem repetir domínios já configurados. Adicione um como distração e outro como destino produtivo, confirme que saem das sugestões e reaparecem se removidos, salve e confirme que a configuração foi atualizada.
 7. Revogue ou negue a permissão `topSites`, clique em **Buscar sites mais acessados** e confirme que a lista não é carregada e nenhuma configuração é alterada.
 
 Este ambiente não oferece uma sessão gráfica do Chrome para carregar extensões, portanto a validação acima deve ser feita no navegador local.
