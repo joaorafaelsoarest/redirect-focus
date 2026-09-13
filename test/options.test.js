@@ -180,5 +180,16 @@ test('pede notificações ao pausar e continua quando a permissão é negada', a
   await page.document.querySelector('#pause').click();
   assert.deepEqual(page.permissionRequests, [{ permissions: ['notifications'] }]);
   assert.equal(page.messages.some(({ type }) => type === 'pause'), true);
-  assert.match(page.document.querySelector('#settings-status').textContent, /Permissão de notificações não concedida/);
+  assert.match(page.document.querySelector('#pause-status').textContent, /Permissão de notificações não concedida/);
+  assert.equal(page.document.querySelector('#settings-status').textContent, '');
+});
+
+test('pausa com notificações concedidas sem mostrar feedback de recusa', async () => {
+  const page = await mountOptionsPage();
+  page.setPermissionGranted(true);
+  await page.document.querySelector('#pause').click();
+  assert.equal(page.messages.some(({ type }) => type === 'pause'), true);
+  assert.match(page.document.querySelector('#pause-status').textContent, /Proteção pausada/);
+  assert.doesNotMatch(page.document.querySelector('#pause-status').textContent, /não concedida/);
+  assert.equal(page.document.querySelector('#settings-status').textContent, '');
 });

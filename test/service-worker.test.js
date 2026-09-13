@@ -17,10 +17,11 @@ function createChrome({ permissionGranted = true, grantedPermissions = [], topSi
   const permissionRequests = [];
   const permissionRemovals = [];
   const notifications = new Map();
+  const notificationCreates = [];
   let optionsPageCalls = 0;
   let topSitesCalls = 0;
   return {
-    data, rules, alarmStore: alarms, grantedOrigins, permissionChecks, permissionRequests, permissionRemovals, notificationStore: notifications,
+    data, rules, alarmStore: alarms, grantedOrigins, permissionChecks, permissionRequests, permissionRemovals, notificationStore: notifications, notificationCreates,
     get optionsPageCalls() { return optionsPageCalls; },
     get topSitesCalls() { return topSitesCalls; },
     grantOrigins(origins) { origins.forEach((origin) => grantedOrigins.add(origin)); },
@@ -57,7 +58,7 @@ function createChrome({ permissionGranted = true, grantedPermissions = [], topSi
     },
     alarms: { create(name, info) { alarms.set(name, info); }, async get(name) { return alarms.get(name); }, async clear(name) { alarms.delete(name); return true; }, onAlarm: event() },
     notifications: {
-      async create(id, options) { notifications.set(id, options); },
+      async create(id, options) { notificationCreates.push({ id, options }); notifications.set(id, options); },
       async clear(id) { return notifications.delete(id); },
     },
     runtime: {
@@ -119,6 +120,30 @@ test('notifica o início e a recuperação automática de uma pausa uma vez', as
   await service.getState();
   assert.equal(chrome.notificationStore.get('pause-status'), notification);
 });
+
+for (const [entryPoint, invoke] of [
+  ['inicialização', (service) => service.initialize()],
+  ['leitura de estado', (service) => service.getState()],
+  ['alocação de redirecionamento', (service) => service.getRedirectTarget()],
+]) {
+  test(`recupera pausa expirada por ${entryPoint} uma única vez`, async () => {
+    const chrome = createChrome({ grantedPermissions: ['notifications'] });
+    chrome.data.blockedDomains = ['instagram.com'];
+    chrome.data.productiveUrls = ['https://trello.com'];
+    chrome.data.pauseUntil = Date.now() - 1_000;
+    chrome.grantOrigins(['*://instagram.com/*', '*://*.instagram.com/*']);
+    const service = createFocusService(chrome);
+
+    await invoke(service);
+    assert.equal(chrome.data.pauseUntil, null);
+    assert.equal(chrome.rules.length, 1);
+    assert.match(chrome.notificationStore.get('pause-status').title, /Proteção retomada/);
+    assert.equal(chrome.notificationCreates.filter(({ id }) => id === 'pause-status').length, 1);
+
+    await service.getState();
+    assert.equal(chrome.notificationCreates.filter(({ id }) => id === 'pause-status').length, 1);
+  });
+}
 
 test('retomada manual remove alarme e notificação sem avisar conclusão', async () => {
   const chrome = createChrome({ grantedPermissions: ['notifications'] });

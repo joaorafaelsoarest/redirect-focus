@@ -12,6 +12,7 @@ const topSitesList = document.querySelector('#top-sites-list');
 const loadTopSitesButton = document.querySelector('#load-top-sites');
 const showMoreTopSitesButton = document.querySelector('#show-more-top-sites');
 const pauseCountdown = document.querySelector('#pause-countdown');
+const pauseStatus = document.querySelector('#pause-status');
 const resumeButton = document.querySelector('#resume');
 let currentPause = { paused: false, pauseUntil: null };
 let displayedPauseMinutes = null;
@@ -20,6 +21,11 @@ let pauseRefreshTimer;
 function announce(text, error = false) {
   status.textContent = text;
   status.classList.toggle('error', error);
+}
+
+function announcePause(text, error = false) {
+  pauseStatus.textContent = text;
+  pauseStatus.classList.toggle('error', error);
 }
 
 function renderPause(pause) {
@@ -199,13 +205,13 @@ document.querySelector('#pause').addEventListener('click', async () => {
   const result = await send('pause', { minutes: Number(document.querySelector('#pause-minutes').value) });
   if (result.ok) {
     renderPause({ paused: true, pauseUntil: result.pauseUntil });
-    announce(notificationsGranted ? 'Proteção pausada.' : 'Proteção pausada. Permissão de notificações não concedida.', !notificationsGranted);
-  } else announce(result.error, true);
+    announcePause(notificationsGranted ? 'Proteção pausada.' : 'Proteção pausada. Permissão de notificações não concedida.', !notificationsGranted);
+  } else announcePause(result.error, true);
 });
 resumeButton.addEventListener('click', async () => {
   const result = await send('resume');
   if (result.ok) renderPause({ paused: false, pauseUntil: null });
-  announce(result.ok ? 'Proteção retomada.' : result.error, !result.ok);
+  announcePause(result.ok ? 'Proteção retomada.' : result.error, !result.ok);
 });
 
 (async () => { try { const state = await send('getState'); blockedDomains = state.blockedDomains; productiveUrls = state.productiveUrls; renderPause(state.pause); render(); } catch { announce('Não foi possível carregar as configurações.', true); } })();
