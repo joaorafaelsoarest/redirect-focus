@@ -20,6 +20,7 @@ const DEFAULTS = {
   onboardingShown: false,
 };
 const RESUME_ALARM = 'resumeProtection';
+const PAUSE_NOTIFICATION = 'pause-status';
 
 function dateBefore(days, now = new Date()) {
   const value = new Date(now);
@@ -46,6 +47,24 @@ export function createFocusService(chromeApi) {
     return chromeApi.storage.local.get(DEFAULTS);
   }
 
+  async function showPauseNotification(title, message) {
+    try {
+      if (!chromeApi.notifications || !await chromeApi.permissions.contains({ permissions: ['notifications'] })) return;
+      await chromeApi.notifications.create(PAUSE_NOTIFICATION, {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title,
+        message,
+      });
+    } catch {}
+  }
+
+  async function clearPauseNotification() {
+    try {
+      if (chromeApi.notifications) await chromeApi.notifications.clear(PAUSE_NOTIFICATION);
+    } catch {}
+  }
+
   async function synchronizeRulesInternal(state) {
     const currentState = state ?? await configuration();
     const current = await chromeApi.declarativeNetRequest.getDynamicRules();
@@ -67,6 +86,8 @@ export function createFocusService(chromeApi) {
     const pause = pauseState(state.pauseUntil);
     if (state.pauseUntil && !pause.paused) {
       await chromeApi.storage.local.set({ pauseUntil: null });
+      await chromeApi.alarms.clear(RESUME_ALARM);
+      await showPauseNotification('Proteção retomada', 'A pausa terminou e o Redirect Focus voltou a proteger seus domínios.');
       return { ...state, pauseUntil: null };
     }
     return state;
@@ -120,6 +141,7 @@ export function createFocusService(chromeApi) {
     await chromeApi.storage.local.set({ pauseUntil });
     chromeApi.alarms.create(RESUME_ALARM, { when: pauseUntil });
     await synchronizeRulesInternal({ ...await configuration(), pauseUntil });
+    await showPauseNotification('Pausa iniciada', `A proteção ficará pausada por ${Number(minutes)} minutos.`);
     return { ok: true, pauseUntil };
   }
   function pause(minutes, now) { return serialize(() => pauseInternal(minutes, now)); }
@@ -127,6 +149,7 @@ export function createFocusService(chromeApi) {
   async function resumeInternal() {
     await chromeApi.storage.local.set({ pauseUntil: null });
     await chromeApi.alarms.clear(RESUME_ALARM);
+    await clearPauseNotification();
     await synchronizeRulesInternal({ ...await configuration(), pauseUntil: null });
     return { ok: true };
   }
@@ -152,7 +175,10 @@ export function createFocusService(chromeApi) {
   function getState() { return serialize(getStateInternal); }
 
   async function allocateRedirectTarget() {
-    const state = await normalizeState(await configuration());
+    const rawState = await configuration();
+    const expired = rawState.pauseUntil && !pauseState(rawState.pauseUntil).paused;
+    const state = await normalizeState(rawState);
+    if (expired) await synchronizeRulesInternal(state);
     if (pauseState(state.pauseUntil).paused) return { ok: false, error: 'A proteção está pausada.' };
     const rotation = nextRotation(state.productiveUrls, state.rotationIndex);
     if (!rotation) return { ok: false, error: 'Nenhum destino produtivo está configurado.' };
@@ -191,7 +217,12 @@ export function createFocusService(chromeApi) {
     chromeApi.runtime.onInstalled.addListener(handleInstalled);
     chromeApi.runtime.onStartup.addListener(() => initialize());
     chromeApi.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === RESUME_ALARM) resume();
+      if (alarm.name === RESUME_ALARM) return serialize(async () => {
+        const rawState = await configuration();
+        if (!rawState.pauseUntil || pauseState(rawState.pauseUntil).paused) return;
+        const state = await normalizeState(rawState);
+        await synchronizeRulesInternal(state);
+      });
     });
     chromeApi.permissions.onRemoved.addListener(() => synchronizeRules());
     chromeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {

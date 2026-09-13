@@ -1,4 +1,4 @@
-import { classifyTopSite, domainsOverlap, hostPermissionOrigins, normalizeProductiveUrl, validateConfiguration } from './lib/core.js';
+import { classifyTopSite, domainsOverlap, hostPermissionOrigins, normalizeProductiveUrl, pauseState, remainingPauseMinutes, validateConfiguration } from './lib/core.js';
 
 const TOP_SITE_BATCH_SIZE = 5;
 let blockedDomains = [];
@@ -11,10 +11,37 @@ const productiveList = document.querySelector('#productive-list');
 const topSitesList = document.querySelector('#top-sites-list');
 const loadTopSitesButton = document.querySelector('#load-top-sites');
 const showMoreTopSitesButton = document.querySelector('#show-more-top-sites');
+const pauseCountdown = document.querySelector('#pause-countdown');
+const pauseStatus = document.querySelector('#pause-status');
+const resumeButton = document.querySelector('#resume');
+let currentPause = { paused: false, pauseUntil: null };
+let displayedPauseMinutes;
+let pauseRefreshTimer;
 
 function announce(text, error = false) {
   status.textContent = text;
   status.classList.toggle('error', error);
+}
+
+function announcePause(text, error = false) {
+  pauseStatus.textContent = text;
+  pauseStatus.classList.toggle('error', error);
+}
+
+function renderPause(pause) {
+  currentPause = pause ?? { paused: false, pauseUntil: null };
+  const minutes = currentPause.paused ? remainingPauseMinutes(currentPause.pauseUntil) : null;
+  resumeButton.hidden = minutes === null;
+  if (minutes !== displayedPauseMinutes) {
+    pauseCountdown.textContent = minutes === null ? 'Proteção ativa.' : `${minutes} minuto${minutes === 1 ? '' : 's'} restante${minutes === 1 ? '' : 's'} de pausa.`;
+    displayedPauseMinutes = minutes;
+  }
+  clearTimeout(pauseRefreshTimer);
+  if (minutes !== null) {
+    const delay = Math.max(1, currentPause.pauseUntil - Date.now() - (minutes - 1) * 60_000) + 10;
+    pauseRefreshTimer = setTimeout(() => renderPause(currentPause), delay);
+    pauseRefreshTimer.unref?.();
+  }
 }
 
 function listButton(label, accessibleName, callback) {
@@ -169,7 +196,26 @@ document.querySelector('#save').addEventListener('click', () => {
     return save();
   }).catch(() => announce('Não foi possível salvar agora.', true));
 });
-document.querySelector('#pause').addEventListener('click', async () => { const result = await send('pause', { minutes: Number(document.querySelector('#pause-minutes').value) }); announce(result.ok ? 'Proteção pausada.' : result.error, !result.ok); });
-document.querySelector('#resume').addEventListener('click', async () => { const result = await send('resume'); announce(result.ok ? 'Proteção retomada.' : result.error, !result.ok); });
+document.querySelector('#pause').addEventListener('click', async () => {
+  let notificationsGranted = false;
+  try {
+    notificationsGranted = await chrome.permissions.contains({ permissions: ['notifications'] });
+    if (!notificationsGranted) notificationsGranted = await chrome.permissions.request({ permissions: ['notifications'] });
+  } catch { notificationsGranted = false; }
+  const result = await send('pause', { minutes: Number(document.querySelector('#pause-minutes').value) });
+  if (result.ok) {
+    renderPause({ paused: true, pauseUntil: result.pauseUntil });
+    announcePause(notificationsGranted ? 'Proteção pausada.' : 'Proteção pausada. Permissão de notificações não concedida.', !notificationsGranted);
+  } else announcePause(result.error, true);
+});
+resumeButton.addEventListener('click', async () => {
+  const result = await send('resume');
+  if (result.ok) renderPause({ paused: false, pauseUntil: null });
+  announcePause(result.ok ? 'Proteção retomada.' : result.error, !result.ok);
+});
 
-(async () => { try { const state = await send('getState'); blockedDomains = state.blockedDomains; productiveUrls = state.productiveUrls; render(); } catch { announce('Não foi possível carregar as configurações.', true); } })();
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.pauseUntil) renderPause(pauseState(changes.pauseUntil.newValue));
+});
+
+(async () => { try { const state = await send('getState'); blockedDomains = state.blockedDomains; productiveUrls = state.productiveUrls; renderPause(state.pause); render(); } catch { announce('Não foi possível carregar as configurações.', true); } })();

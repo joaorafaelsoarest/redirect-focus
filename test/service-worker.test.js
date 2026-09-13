@@ -7,7 +7,7 @@ function event() {
   return { addListener(listener) { listeners.push(listener); }, async emit(...args) { return Promise.all(listeners.map((listener) => listener(...args))); } };
 }
 
-function createChrome({ permissionGranted = true, grantedPermissions = [], topSites = [], topSitesError = null } = {}) {
+function createChrome({ permissionGranted = true, grantedPermissions = [], topSites = [], topSitesError = null, notificationCreateError = null, notificationClearError = null } = {}) {
   const data = {};
   const rules = [];
   const alarms = new Map();
@@ -16,10 +16,12 @@ function createChrome({ permissionGranted = true, grantedPermissions = [], topSi
   const permissionChecks = [];
   const permissionRequests = [];
   const permissionRemovals = [];
+  const notifications = new Map();
+  const notificationCreates = [];
   let optionsPageCalls = 0;
   let topSitesCalls = 0;
   return {
-    data, rules, alarmStore: alarms, grantedOrigins, permissionChecks, permissionRequests, permissionRemovals,
+    data, rules, alarmStore: alarms, grantedOrigins, permissionChecks, permissionRequests, permissionRemovals, notificationStore: notifications, notificationCreates,
     get optionsPageCalls() { return optionsPageCalls; },
     get topSitesCalls() { return topSitesCalls; },
     grantOrigins(origins) { origins.forEach((origin) => grantedOrigins.add(origin)); },
@@ -43,7 +45,7 @@ function createChrome({ permissionGranted = true, grantedPermissions = [], topSi
         return origins.every((origin) => grantedOrigins.has(origin))
           && permissions.every((permission) => namedPermissions.has(permission));
       },
-      async request({ origins = [] }) { permissionRequests.push(origins); if (permissionGranted) origins.forEach((origin) => grantedOrigins.add(origin)); return permissionGranted; },
+      async request({ origins = [], permissions = [] }) { permissionRequests.push({ origins, permissions }); if (permissionGranted) { origins.forEach((origin) => grantedOrigins.add(origin)); permissions.forEach((permission) => namedPermissions.add(permission)); } return permissionGranted; },
       async remove({ origins = [] }) { permissionRemovals.push(origins); origins.forEach((origin) => grantedOrigins.delete(origin)); this.onRemoved.emit({ origins }); return true; },
       onRemoved: event(),
     },
@@ -55,6 +57,10 @@ function createChrome({ permissionGranted = true, grantedPermissions = [], topSi
       },
     },
     alarms: { create(name, info) { alarms.set(name, info); }, async get(name) { return alarms.get(name); }, async clear(name) { alarms.delete(name); return true; }, onAlarm: event() },
+    notifications: {
+      async create(id, options) { if (notificationCreateError) throw notificationCreateError; notificationCreates.push({ id, options }); notifications.set(id, options); },
+      async clear(id) { if (notificationClearError) throw notificationClearError; return notifications.delete(id); },
+    },
     runtime: {
       onInstalled: event(), onStartup: event(), onMessage: event(), lastError: null,
       async openOptionsPage() { optionsPageCalls += 1; },
@@ -95,6 +101,119 @@ test('pausar remove regras e retomar restaura regras', async () => {
   await service.resume();
   assert.equal(chrome.data.pauseUntil, null);
   assert.equal(chrome.rules.length, 1);
+});
+
+test('continua a pausa quando a notificação de início falha', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'], notificationCreateError: new Error('notificações indisponíveis') });
+  chrome.grantOrigins(['*://x.com/*', '*://*.x.com/*']);
+  const service = createFocusService(chrome);
+  await service.saveConfiguration({ blockedDomains: ['x.com'], productiveUrls: ['https://substack.com'] });
+
+  const result = await service.pause(15, Date.now());
+
+  assert.equal(result.ok, true);
+  assert.equal(typeof chrome.data.pauseUntil, 'number');
+  assert.equal(chrome.alarmStore.has('resumeProtection'), true);
+  assert.deepEqual(chrome.rules, []);
+});
+
+test('recupera regras quando a notificação de conclusão falha', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'], notificationCreateError: new Error('notificações indisponíveis') });
+  chrome.data.blockedDomains = ['instagram.com'];
+  chrome.data.productiveUrls = ['https://trello.com'];
+  chrome.data.pauseUntil = Date.now() - 1_000;
+  chrome.grantOrigins(['*://instagram.com/*', '*://*.instagram.com/*']);
+  const service = createFocusService(chrome);
+
+  await service.getState();
+
+  assert.equal(chrome.data.pauseUntil, null);
+  assert.equal(chrome.alarmStore.has('resumeProtection'), false);
+  assert.equal(chrome.rules.length, 1);
+});
+
+test('retoma regras quando limpar a notificação manual falha', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'], notificationClearError: new Error('notificações indisponíveis') });
+  chrome.grantOrigins(['*://x.com/*', '*://*.x.com/*']);
+  const service = createFocusService(chrome);
+  await service.saveConfiguration({ blockedDomains: ['x.com'], productiveUrls: ['https://substack.com'] });
+  await service.pause(15, Date.now());
+
+  const result = await service.resume();
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(chrome.data.pauseUntil, null);
+  assert.equal(chrome.alarmStore.has('resumeProtection'), false);
+  assert.equal(chrome.rules.length, 1);
+});
+
+test('notifica o início e a recuperação automática de uma pausa uma vez', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'] });
+  const service = createFocusService(chrome);
+  const now = Date.now();
+  await service.pause(15, now);
+  assert.equal(chrome.notificationStore.has('pause-status'), true);
+  assert.match(chrome.notificationStore.get('pause-status').title, /Pausa iniciada/);
+
+  chrome.data.pauseUntil = now - 1;
+  service.bindEvents();
+  await chrome.alarms.onAlarm.emit({ name: 'resumeProtection' });
+  assert.equal(chrome.data.pauseUntil, null);
+  assert.match(chrome.notificationStore.get('pause-status').title, /Proteção retomada/);
+  const notification = chrome.notificationStore.get('pause-status');
+  await service.getState();
+  assert.equal(chrome.notificationStore.get('pause-status'), notification);
+});
+
+for (const [entryPoint, invoke] of [
+  ['inicialização', (service) => service.initialize()],
+  ['leitura de estado', (service) => service.getState()],
+  ['alocação de redirecionamento', (service) => service.getRedirectTarget()],
+]) {
+  test(`recupera pausa expirada por ${entryPoint} uma única vez`, async () => {
+    const chrome = createChrome({ grantedPermissions: ['notifications'] });
+    chrome.data.blockedDomains = ['instagram.com'];
+    chrome.data.productiveUrls = ['https://trello.com'];
+    chrome.data.pauseUntil = Date.now() - 1_000;
+    chrome.grantOrigins(['*://instagram.com/*', '*://*.instagram.com/*']);
+    const service = createFocusService(chrome);
+
+    await invoke(service);
+    assert.equal(chrome.data.pauseUntil, null);
+    assert.equal(chrome.rules.length, 1);
+    assert.match(chrome.notificationStore.get('pause-status').title, /Proteção retomada/);
+    assert.equal(chrome.notificationCreates.filter(({ id }) => id === 'pause-status').length, 1);
+
+    await service.getState();
+    assert.equal(chrome.notificationCreates.filter(({ id }) => id === 'pause-status').length, 1);
+  });
+}
+
+test('retomada manual remove alarme e notificação sem avisar conclusão', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'] });
+  const service = createFocusService(chrome);
+  await service.pause(15, Date.now());
+  assert.equal(chrome.notificationStore.has('pause-status'), true);
+  await service.resume();
+  assert.equal(chrome.alarmStore.has('resumeProtection'), false);
+  assert.equal(chrome.notificationStore.has('pause-status'), false);
+});
+
+test('alarme antigo não encerra a pausa que o usuário substituiu', async () => {
+  const chrome = createChrome({ grantedPermissions: ['notifications'] });
+  const service = createFocusService(chrome);
+  const now = Date.now();
+  await service.pause(15, now - 15 * 60_000 - 1);
+  await service.pause(30, now);
+  const replacementPauseUntil = now + 30 * 60_000;
+  const replacementAlarm = chrome.alarmStore.get('resumeProtection');
+  const replacementNotification = chrome.notificationStore.get('pause-status');
+  service.bindEvents();
+  await chrome.alarms.onAlarm.emit({ name: 'resumeProtection', scheduledTime: now - 1 });
+  assert.equal(chrome.data.pauseUntil, replacementPauseUntil);
+  assert.equal(chrome.alarmStore.get('resumeProtection'), replacementAlarm);
+  assert.deepEqual(chrome.rules, []);
+  assert.equal(chrome.notificationStore.get('pause-status'), replacementNotification);
 });
 
 test('recusa salvar domínio sem permissão sem solicitar prompt no worker', async () => {

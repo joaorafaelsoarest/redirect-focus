@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import * as core from '../lib/core.js';
+const {
   buildRedirectRules,
   classifyTopSite,
   domainsOverlap,
@@ -13,7 +14,8 @@ import {
   recordRedirect,
   statistics,
   validateConfiguration,
-} from '../lib/core.js';
+} = core;
+const remainingPauseMinutes = core.remainingPauseMinutes ?? (() => null);
 
 test('normaliza domínio e reconhece raiz e subdomínios', () => {
   assert.equal(normalizeDomain(' HTTPS://WWW.Instagram.com/reels/ '), 'instagram.com');
@@ -176,4 +178,13 @@ test('informa pausa ativa, expirada e ausente', () => {
   assert.deepEqual(pauseState(2_000, now), { paused: true, pauseUntil: 2_000 });
   assert.deepEqual(pauseState(1_000, now), { paused: false, pauseUntil: null });
   assert.deepEqual(pauseState(null, now), { paused: false, pauseUntil: null });
+});
+
+test('calcula minutos inteiros restantes arredondando para cima', () => {
+  const now = 1_000_000;
+  assert.equal(remainingPauseMinutes(now + 60_000, now), 1);
+  assert.equal(remainingPauseMinutes(now + 60_001, now), 2);
+  assert.equal(remainingPauseMinutes(now + 1, now), 1);
+  assert.equal(remainingPauseMinutes(now, now), null);
+  assert.equal(remainingPauseMinutes(null, now), null);
 });

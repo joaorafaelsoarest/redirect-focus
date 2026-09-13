@@ -5,6 +5,11 @@
     <main class="settings" aria-labelledby="page-title">
       <p class="eyebrow">Redirect Focus</p><h1 id="page-title">Proteja seu tempo</h1><p class="intro">Escolha o que interromper e para onde voltar. A lista de sites mais visitados só é consultada quando você pedir e não é salva automaticamente.</p>
       <p id="settings-status" class="status" role="status" aria-live="polite"></p>
+      <section aria-labelledby="pause-heading"><h2 id="pause-heading">Pausa do redirect</h2><p>Faça uma pausa temporária. A proteção volta automaticamente ao fim do período.</p>
+        <p id="pause-countdown" class="status" role="status" aria-live="polite"></p>
+        <p id="pause-status" class="status" role="status" aria-live="polite"></p>
+        <div class="actions"><label for="pause-minutes">Pausar por</label><select id="pause-minutes"><option value="15">15 minutos</option><option value="30">30 minutos</option><option value="60">60 minutos</option></select><button id="pause" type="button" class="secondary">Pausar</button><button id="resume" type="button" class="secondary" hidden>Retomar agora</button></div>
+      </section>
       <section aria-labelledby="blocked-heading"><h2 id="blocked-heading">Domínios que interrompem</h2><p>Você autoriza cada domínio apenas quando salvar.</p>
         <form id="blocked-form" class="inline-form"><label for="blocked-input">Domínio</label><input id="blocked-input" name="blocked" placeholder="ex.: instagram.com" autocomplete="off"><button>Adicionar</button></form>
         <div class="suggestions" aria-label="Sugestões de distração"><span>Sugestões:</span><button type="button" data-blocked="facebook.com">Facebook</button><button type="button" data-blocked="instagram.com">Instagram</button><button type="button" data-blocked="tiktok.com">TikTok</button><button type="button" data-blocked="x.com">X</button><button type="button" data-blocked="reddit.com">Reddit</button><button type="button" data-blocked="youtube.com">YouTube</button><button type="button" data-blocked="twitch.tv">Twitch</button><button type="button" data-blocked="discord.com">Discord</button><button type="button" data-blocked="threads.net">Threads</button></div>
@@ -16,7 +21,7 @@
         <ol id="productive-list" class="item-list" aria-label="Ordem dos destinos produtivos"></ol>
       </section>
       <section aria-labelledby="top-sites-heading"><h2 id="top-sites-heading">Sites mais visitados</h2><p>O Chrome pedirá autorização para mostrar os sites frequentes da nova aba. Sites já selecionados não aparecem; use “Ver mais” para explorar as próximas opções.</p><button id="load-top-sites" type="button" class="secondary">Buscar sites mais acessados</button><ul id="top-sites-list" class="item-list" aria-label="Sites frequentes para classificar"></ul><button id="show-more-top-sites" type="button" class="secondary" hidden>Ver mais</button></section>
-      <div class="actions"><button id="save" type="button">Salvar e ativar</button><label for="pause-minutes">Pausar por</label><select id="pause-minutes"><option value="15">15 minutos</option><option value="30">30 minutos</option><option value="60">60 minutos</option></select><button id="pause" type="button" class="secondary">Pausar</button><button id="resume" type="button" class="secondary">Retomar agora</button></div>
+      <div class="actions"><button id="save" type="button">Salvar e ativar</button></div>
     </main>
     <script type="module" src="options.js"></script>
   </body>

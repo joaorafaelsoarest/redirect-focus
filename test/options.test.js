@@ -10,6 +10,7 @@ class FakeElement {
     this.classNames = new Set();
     this.value = '';
     this.disabled = false;
+    this.textWrites = 0;
     this.classList = {
       toggle: (name, force) => {
         if (force) this.classNames.add(name);
@@ -19,6 +20,7 @@ class FakeElement {
   }
 
   set textContent(value) {
+    this.textWrites += 1;
     this._textContent = String(value);
     this.children = [];
   }
@@ -54,8 +56,13 @@ function makeDocument() {
   return document;
 }
 
+function event() {
+  const listeners = [];
+  return { addListener(listener) { listeners.push(listener); }, async emit(...args) { return Promise.all(listeners.map((listener) => listener(...args))); } };
+}
+
 let scenario = 0;
-async function mountOptionsPage() {
+async function mountOptionsPage({ pause = { paused: false, pauseUntil: null }, clock = null } = {}) {
   const document = makeDocument();
   const messages = [];
   const permissionRequests = [];
@@ -64,10 +71,24 @@ async function mountOptionsPage() {
   const initialState = {
     blockedDomains: ['instagram.com'],
     productiveUrls: ['https://trello.com'],
+    pause,
   };
+  const originalDateNow = Date.now;
+  const originalSetTimeout = globalThis.setTimeout;
+  const timers = [];
+  if (clock) {
+    Date.now = () => clock.now;
+    globalThis.setTimeout = (callback, delay) => {
+      const timer = { callback, at: clock.now + delay };
+      timers.push(timer);
+      return timer;
+    };
+  }
   globalThis.document = document;
   globalThis.chrome = {
+    storage: { onChanged: event() },
     permissions: {
+      async contains() { return false; },
       async request(permission) { permissionRequests.push(permission); return permissionGranted; },
     },
     runtime: {
@@ -85,6 +106,17 @@ async function mountOptionsPage() {
     document, messages, permissionRequests,
     setPermissionGranted(value) { permissionGranted = value; },
     setTopSitesResponse(value) { topSitesResponse = value; },
+    setPause(value) { initialState.pause = value; },
+    async runNextTimer() {
+      const timer = timers.shift();
+      clock.now = timer.at;
+      timer.callback();
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+    restoreClock() {
+      Date.now = originalDateNow;
+      globalThis.setTimeout = originalSetTimeout;
+    },
   };
 }
 
@@ -163,4 +195,77 @@ test('revela sites frequentes em grupos de cinco e oculta a ação ao chegar ao 
   await showMoreButton.click();
   assert.equal(topSitesList.children.length, 12);
   assert.equal(showMoreButton.hidden, true);
+});
+
+test('mostra contagem da pausa e permite retomar a proteção', async () => {
+  const page = await mountOptionsPage({ pause: { paused: true, pauseUntil: Date.now() + 60_000 } });
+  assert.match(page.document.querySelector('#pause-countdown').textContent, /1 minuto restante/);
+  assert.equal(page.document.querySelector('#resume').hidden, false);
+  await page.document.querySelector('#resume').click();
+  assert.equal(page.messages.some(({ type }) => type === 'resume'), true);
+});
+
+test('mostra o estado ativo quando carregada sem pausa', async () => {
+  const page = await mountOptionsPage();
+  assert.equal(page.document.querySelector('#pause-countdown').textContent, 'Proteção ativa.');
+});
+
+test('sincroniza somente a pausa externa sem descartar uma edição não salva', async () => {
+  const page = await mountOptionsPage();
+  const input = page.document.querySelector('#blocked-input');
+  input.value = 'draft.example';
+  await page.document.querySelector('#blocked-form').listeners.get('submit')({ preventDefault() {} });
+  assert.match(page.document.querySelector('#blocked-list').textContent, /draft\.example/);
+
+  const pauseUntil = Date.now() + 30 * 60_000;
+  page.setPause({ paused: true, pauseUntil });
+  await globalThis.chrome.storage.onChanged.emit({ pauseUntil: { oldValue: null, newValue: pauseUntil } }, 'local');
+  assert.match(page.document.querySelector('#pause-countdown').textContent, /30 minutos restantes/);
+  assert.equal(page.document.querySelector('#resume').hidden, false);
+  assert.match(page.document.querySelector('#blocked-list').textContent, /draft\.example/);
+
+  page.setPause({ paused: false, pauseUntil: null });
+  await globalThis.chrome.storage.onChanged.emit({ pauseUntil: { oldValue: pauseUntil, newValue: null } }, 'local');
+  assert.equal(page.document.querySelector('#pause-countdown').textContent, 'Proteção ativa.');
+  assert.equal(page.document.querySelector('#resume').hidden, true);
+  assert.match(page.document.querySelector('#blocked-list').textContent, /draft\.example/);
+});
+
+test('atualiza a contagem na virada do minuto sem repetir o mesmo anúncio', async () => {
+  const clock = { now: 1_000_000 };
+  const pauseUntil = clock.now + 120_000;
+  const page = await mountOptionsPage({ pause: { paused: true, pauseUntil }, clock });
+  try {
+    const countdown = page.document.querySelector('#pause-countdown');
+    assert.match(countdown.textContent, /2 minutos restantes/);
+    const initialWrites = countdown.textWrites;
+
+    await globalThis.chrome.storage.onChanged.emit({ pauseUntil: { oldValue: pauseUntil, newValue: pauseUntil } }, 'local');
+    assert.equal(countdown.textWrites, initialWrites);
+
+    await page.runNextTimer();
+    assert.match(countdown.textContent, /1 minuto restante/);
+    assert.equal(countdown.textWrites, initialWrites + 1);
+  } finally {
+    page.restoreClock();
+  }
+});
+
+test('pede notificações ao pausar e continua quando a permissão é negada', async () => {
+  const page = await mountOptionsPage();
+  await page.document.querySelector('#pause').click();
+  assert.deepEqual(page.permissionRequests, [{ permissions: ['notifications'] }]);
+  assert.equal(page.messages.some(({ type }) => type === 'pause'), true);
+  assert.match(page.document.querySelector('#pause-status').textContent, /Permissão de notificações não concedida/);
+  assert.equal(page.document.querySelector('#settings-status').textContent, '');
+});
+
+test('pausa com notificações concedidas sem mostrar feedback de recusa', async () => {
+  const page = await mountOptionsPage();
+  page.setPermissionGranted(true);
+  await page.document.querySelector('#pause').click();
+  assert.equal(page.messages.some(({ type }) => type === 'pause'), true);
+  assert.match(page.document.querySelector('#pause-status').textContent, /Proteção pausada/);
+  assert.doesNotMatch(page.document.querySelector('#pause-status').textContent, /não concedida/);
+  assert.equal(page.document.querySelector('#settings-status').textContent, '');
 });
