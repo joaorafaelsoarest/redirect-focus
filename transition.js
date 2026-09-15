@@ -2,6 +2,7 @@ const countdown = document.querySelector('#countdown');
 const destination = document.querySelector('#destination');
 const destinationChoices = document.querySelector('#destination-choices');
 const status = document.querySelector('#transition-status');
+const selectionStatus = document.querySelector('#selection-status');
 const REDIRECT_DELAY_SECONDS = 5;
 
 function prettyUrl(url) { try { return new URL(url).hostname; } catch { return url; } }
@@ -20,15 +21,47 @@ function destinationLabel(value, destinations) {
 async function start() {
   let timer = null;
   let redirected = false;
+  let pointerInside = false;
+  let focusInside = false;
+  let selectionPaused = false;
   const buttons = [];
+  let seconds = REDIRECT_DELAY_SECONDS;
+
+  function stopTimer() {
+    if (timer === null) return;
+    clearInterval(timer);
+    timer = null;
+  }
+
+  function startTimer(target) {
+    if (timer !== null || redirected || pointerInside || focusInside || seconds <= 0) return;
+    timer = setInterval(() => {
+      if (redirected || pointerInside || focusInside) return;
+      seconds -= 1;
+      countdown.textContent = String(seconds);
+      if (seconds === 0) redirect(target.url);
+    }, 1000);
+  }
+
+  function updateSelectionState(target) {
+    const selecting = pointerInside || focusInside;
+    if (selecting) {
+      if (selectionPaused) return;
+      selectionPaused = true;
+      stopTimer();
+      selectionStatus.textContent = 'Contagem pausada enquanto você escolhe um destino.';
+      return;
+    }
+    if (!selectionPaused) return;
+    selectionPaused = false;
+    selectionStatus.textContent = 'Contagem retomada.';
+    startTimer(target);
+  }
 
   function redirect(url) {
     if (redirected) return;
     redirected = true;
-    if (timer !== null) {
-      clearInterval(timer);
-      timer = null;
-    }
+    stopTimer();
     buttons.forEach((button) => { button.disabled = true; });
     window.location.replace(url);
   }
@@ -52,14 +85,26 @@ async function start() {
       return item;
     }));
 
-    let seconds = REDIRECT_DELAY_SECONDS;
+    destinationChoices.addEventListener('pointerenter', () => {
+      pointerInside = true;
+      updateSelectionState(target);
+    });
+    destinationChoices.addEventListener('pointerleave', () => {
+      pointerInside = false;
+      updateSelectionState(target);
+    });
+    destinationChoices.addEventListener('focusin', () => {
+      focusInside = true;
+      updateSelectionState(target);
+    });
+    destinationChoices.addEventListener('focusout', (event) => {
+      if (event.relatedTarget && destinationChoices.contains?.(event.relatedTarget)) return;
+      focusInside = false;
+      updateSelectionState(target);
+    });
+
     countdown.textContent = String(seconds);
-    timer = setInterval(() => {
-      if (redirected) return;
-      seconds -= 1;
-      countdown.textContent = String(seconds);
-      if (seconds === 0) redirect(target.url);
-    }, 1000);
+    startTimer(target);
   } catch (error) { status.textContent = error.message || 'Não foi possível continuar agora.'; }
 }
 start();
