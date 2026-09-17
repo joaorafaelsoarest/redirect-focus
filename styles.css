@@ -12,6 +12,7 @@ main { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 3rem; }
 button:disabled { cursor: default; opacity: .7; }
 .transition { min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at top, #e9f2dd, #f6f8f2 60%); }
 .transition main { max-width: 660px; text-align: center; }
+.transition #selection-status { margin: .75rem 0 0; }
 .transition-destinations { max-width: 520px; margin: 1.5rem auto 0; text-align: left; }
 .transition-destinations h2 { font-size: 1rem; }
 .destination-choices { display: grid; gap: .5rem; margin: .75rem 0 0; padding: 0; list-style: none; }
